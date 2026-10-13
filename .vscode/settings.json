@@ -1,0 +1,11 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/venv/Scripts/python.exe",
+  "git.enabled": true,
+  "git.autofetch": true,
+  "python.analysis.extraPaths": [
+    "./src",
+    "./src/search",
+    "./src/optimizer",
+    "./src/optimizer/engine"
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "pole_parameters": [
+    0.0033943082005744203,
+    -5.994490217045736e-05
+  ],
+  "pole_frame_to_icrf": [
+    [
+      0.9999942393857179,
+      2.6469779601696886e-23,
+      0.0033942886411756188
+    ],
+    [
+      2.034703001679929e-07,
+      0.9999999982033044,
+      -5.994455674329565e-05
+    ],
+    [
+      -0.0033942886350771155,
+      5.994490206275461e-05,
+      0.9999942375890326
+    ]
+  ],
+  "train_arc_count": 69,
+  "held_out_arc_count": 36,
+  "fitted_pole_held_out": {
+    "rms_equivalent_velocity_m_s": 2.171343955046425e-06,
+    "max_equivalent_velocity_m_s": 2.1965554264369302e-05
+  },
+  "optimizer_success": true,
+  "source": "Original 35 target ATK ephemerides; no Inspector trajectory or solution seed",
+  "sampling": {
+    "start_grid_indices": [
+      0,
+      1440,
+      7200
+    ],
+    "duration_grid_steps": 120,
+    "grid_step_s": 60,
+    "held_out": "target_index % 3 == 0"
+  },
+  "note": "Fixed-pole empirical surrogate, not native/official certification."
+}
