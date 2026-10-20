@@ -3,12 +3,12 @@
 目标端点由 J2 星历三次 Hermite 插值得到；转移弧使用二体 Lambert，仅用于粗搜排序。
 正式结果必须在后续阶段进行 J2 同伦优化和 ATK 验证。
 """
+
 from __future__ import annotations
 
 import math
 import numpy as np
 from numba import njit
-
 
 MU = 398600.4415
 RE = 6378.1363
@@ -145,12 +145,10 @@ def arc_min_radius(r1, v1, r2, v2, duration_s: float) -> float:
         semimajor_axis = 1.0 / inverse_a
         sin_eccentric = np.dot(r1, v1) / (eccentricity * math.sqrt(MU * semimajor_axis))
         cos_eccentric = (1.0 - radius / semimajor_axis) / eccentricity
-        mean_anomaly = (
-            math.atan2(sin_eccentric, cos_eccentric) - eccentricity * sin_eccentric
-        ) % (2.0 * math.pi)
-        until_periapsis = (2.0 * math.pi - mean_anomaly) / math.sqrt(
-            MU / semimajor_axis**3
+        mean_anomaly = (math.atan2(sin_eccentric, cos_eccentric) - eccentricity * sin_eccentric) % (
+            2.0 * math.pi
         )
+        until_periapsis = (2.0 * math.pi - mean_anomaly) / math.sqrt(MU / semimajor_axis**3)
         if duration_s + 1e-5 >= until_periapsis:
             minimum = min(minimum, periapsis)
     elif np.dot(r1, v1) < 0.0 and np.dot(r2, v2) > 0.0:
@@ -165,4 +163,3 @@ def rotate(vector, axis, angle):
         + np.cross(axis, vector) * math.sin(angle)
         + axis * np.dot(axis, vector) * (1.0 - math.cos(angle))
     )
-

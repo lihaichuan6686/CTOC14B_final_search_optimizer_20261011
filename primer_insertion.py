@@ -1,12 +1,14 @@
-"""Coupled single-impulse insertion test retaining eccentric launch and balls."""
+"""由全链脉冲的次梯度构造 primer，寻找值得增加自由脉冲的弧段。
+
+primer 范数超过 1 是局部插入机会；插入后的收益仍由全链优化及实际传播决定。
+"""
 
 import numpy as np
 import scipy.sparse as sp
 import cvxpy as cp
-from .physics import target_state, norm
-from .elliptic_joint_scp import pulse_model, pack_initial
-from .adaptive_scp import trajectory, insertion_maps
-from .j2_refine import propagate
+from orbit_dynamics import target_state, norm, propagate
+from j2_optimization import pulse_model, pack_initial
+from impulse_nodes import trajectory, insertion_maps
 
 
 def subgradients(data, states):
@@ -47,17 +49,20 @@ def subgradients(data, states):
         xx[3] >= -0.999999,
         xx[3] <= 0.999999,
         cp.norm(xx[4:6]) <= 0.9985,
-        tt[0] >= data.get("minimum_gap_hours", 10.0/3600),
+        tt[0] >= data.get("minimum_gap_hours", 10.0 / 3600),
         tt[-1] <= 240,
-        tt[1:] - tt[:-1] >= data.get("minimum_gap_hours", 10.0/3600),
+        tt[1:] - tt[:-1] >= data.get("minimum_gap_hours", 10.0 / 3600),
         cp.norm(rr[visits - 1] - moving, axis=1) <= 0.995,
     ]
     problem = cp.Problem(cp.Minimize(cp.sum(bound) + 1e-09 * cp.sum_squares(delta)), constraints)
     problem.solve(
         solver="CLARABEL", tol_gap_abs=1e-10, tol_feas=1e-10, tol_gap_rel=1e-10, max_iter=200
     )
-    if (problem.status not in (cp.OPTIMAL, cp.OPTIMAL_INACCURATE)
-            or cone.dual_value is None or cone.dual_value[1] is None):
+    if (
+        problem.status not in (cp.OPTIMAL, cp.OPTIMAL_INACCURATE)
+        or cone.dual_value is None
+        or cone.dual_value[1] is None
+    ):
         raise ValueError(f"No coupled cone dual: solver status={problem.status}")
     p = -np.array(cone.dual_value[1])
     if p.shape == (3, n):

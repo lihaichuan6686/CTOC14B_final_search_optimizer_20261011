@@ -1,12 +1,8 @@
 * text=auto
-/.gitattributes text eol=lf
-/.gitignore text eol=lf
+.gitattributes text eol=lf
+.gitignore text eol=lf
 *.py text eol=lf
 *.md text eol=lf
 *.json text eol=lf
 *.txt text eol=lf
 *.npy binary
-*.atk binary
-
-# The data manifest verifies exact bytes, including JSON line endings.
-/src/data/** -text whitespace=cr-at-eol

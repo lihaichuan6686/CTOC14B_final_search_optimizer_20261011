@@ -1,11 +1,8 @@
-# Local Python environment
 /venv/
 /.venv/
-
-# Generated calculation outputs and caches
+/.vscode/
 /results/
 /.cache/
-/STOP
 __pycache__/
 *.py[cod]
 *.nbc
@@ -13,14 +10,8 @@ __pycache__/
 *.log
 .pytest_cache/
 .ruff_cache/
-
-# Local credentials and operating-system files
 .env
 .env.*
-!.env.example
 Thumbs.db
 .DS_Store
-
-# Keep shared VS Code settings; exclude machine-specific session files
-.vscode/*.log
 *.code-workspace

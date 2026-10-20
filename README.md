@@ -1,117 +1,110 @@
-# CTOC14B：平面窗口束搜索与自动批量优化
+# CTOC14B：平面引导束搜索与多脉冲轨迹优化
 
-本地项目，只有两个运行入口。根目录为：
+针对 CTOC14 乙题的35目标飞越任务，先用平面带时窗和多圈 Lambert 束搜索产生访问链，再联合优化访问时刻、初始轨道、自由脉冲位置及访问顺序。目标是最小化实际脉冲总和，不含比赛提交时间奖励系数。
 
-```text
-search.py       束搜索主程序
-optimize.py     优化主程序
-src/            算法源码、统一参数、必要的目标星历
-venv/           已配置好的本机 Python 环境
-README.md       本项目介绍
-```
+当前版本采用科研程序写法：**在主程序直接改参数 → 读取数组 → 调用数值算法 → 输出轨迹**。搜索运行 `search.py`，优化运行 `optimize.py`，没有命令行参数、启动器或服务器提交系统。
 
-没有服务器提交脚本、旧优化器对照版本、历史最优解、试验结果全集和离线安装包。`src/data` 是求解 35 个目标所必需的数据，搜索与优化共用这一份。内部数值模块按功能分开，日常只运行两个主程序。
+**完整方法、公式、各阶段参数和实现边界见 [METHOD.md](METHOD.md)。** README 负责运行和阅读导航。
 
-## 怎么运行
+## 运行
 
-在 VS Code 中，请用“文件 → 打开文件夹”打开本项目目录（直接包含 `search.py`、`optimize.py`、`src` 和 `venv` 的这一层）。项目自带 `.vscode/settings.json`，为 Pylance 配置内部源码的搜索路径，并指定本项目解释器。若刚更新配置后仍显示旧的导入提示，执行命令面板中的 `Developer: Reload Window`。若已手动选过其他解释器，请重新选择 `venv/Scripts/python.exe`。
-
-在项目目录打开 PowerShell，依次执行：
+已验算环境为 Python 3.12，数值库版本固定在 `requirements.txt`。已有这些依赖的解释器可直接使用；首次建立环境可执行：
 
 ```powershell
-.\venv\Scripts\python.exe .\search.py
-.\venv\Scripts\python.exe .\optimize.py
-```
-
-也可以在编辑器中直接运行对应主程序：主程序会自动切换到本项目的 venv。优化主程序会读取最近一次已完成或正常停止的搜索结果，不需要手动整理预载包。
-
-只检查环境、不开始计算：
-
-```powershell
-.\venv\Scripts\python.exe .\search.py --check
-.\venv\Scripts\python.exe .\optimize.py --check
-```
-
-已有的其他搜索结果也可直接交给优化器：
-
-```powershell
-.\venv\Scripts\python.exe .\optimize.py --input "某次完整搜索批次目录"
-```
-
-传具体批次目录，或完整初解 JSON，而不是包含多个批次的上级目录。支持原 v6 搜索结果，保留数据校验、完整目标检查和单位检查。
-
-计算规模统一在 **`src/settings.py`** 修改。默认搜索 128 个平面，最多 8 个数值线程；优化最多 8 条初解、4 个活跃父解、2 轮目标换位。优化默认 4 个工作进程，内存不足时会自动减少。末级精英重搜默认开启，设 `deep_beam_parents=0` 可以缩短计算。束宽、窗口容差等搜索细节在 `src/search/config.py`。
-
-这些参数控制计算预算，不保证固定运行时间。首次执行 Numba 数值内核需要编译，后续会使用缓存。
-
-## 输出和接续
-
-运行时自动创建 `results/` 和 `.cache/`：
-
-- 搜索批次在 `results/search/`，每轮完整结果独立保存；`results/latest_run.txt` 指向最新批次。
-- 优化最好解在 `results/optimization/BEST_J2.json`，其严格验证报告在同目录 `BEST_J2_validation.json`。
-- 各任务的输入、日志和收据保存在优化目录内，支持追溯和断点接续。这些是运行后产生的计算记录，不是随项目附送的历史结果。
-
-正常停止可按 Ctrl+C。也可以在项目根目录创建 `STOP` 停止搜索，或在 `results/optimization` 创建 `STOP` 停止优化派发；正在执行的数值任务会先结束。优化接续时删除对应 `STOP`，再次运行同一主程序；已成功任务不会重复优化。
-
-搜索重新运行会创建新批次。更换输入、修改参数或算法后，优化应指定新输出目录，例如 `--work results/optimization_2`，避免混用不同实验。不要同时在同一优化目录启动两个实例。
-
-## 整体方法
-
-### 1. 平面窗口引导的粗搜索
-
-每轮在整个有向轨道面空间均匀抽取一个法向量，确定初始低轨轨道面，再尝试各目标作为首访。根据目标星历求出进入约 ±6° 平面带的时窗，只在这些时窗中尝试转移。
-
-束搜索逐步扩展未访问目标，使用二体 Lambert 弧计算转移与速度跳变，结合时间惩罚、下一步估价及状态多样性保留有限条候选链。默认采用较粗的时间搜索，把预算用于覆盖更多轨道面。平面带是候选访问时刻的筛选条件，不是把后续每段轨迹严格限制在同一个平面上。
-
-### 2. 多初解联合优化
-
-从初搜结果中结合代价与“访问顺序＋时窗”多样性选取初解，保留探索名额。先联调初始轨道、节点位置和时刻，再加入自由脉冲节点，搜索转移分支并压缩冗余节点。
-
-随后切换到 J₂ 模型。每段弧通过打靶连接，使用状态转移矩阵形成导数；SCP 用信赖域与二阶锥子问题联调全链变量，并用非线性回代检查每一步。
-
-### 3. 自动目标换位：破坏、找机会、修复
-
-对每个活跃父解评估全部 35 个目标，不固定优先编号：
-
-1. 暂时解除一个目标的访问约束，做短时全链优化，观察约束释放后能减少多少代价。
-2. 沿调整后的轨迹寻找该目标在其他访问位置的接近机会，对接近时刻做连续细化。
-3. 按释放收益、几何距离和探索名额选取修复候选，不将释放收益当作实际可实现收益，也不简单排除几百公里距离的机会。
-4. 把访问节点插到新时刻，用逐步增加惩罚的弹性 SCP 恢复约束，再按真实总脉冲重新优化。
-
-解除约束后的不完整轨迹不计成绩。换位失败保留原父解；有效候选通过择优与多样性筛选进入下一轮，从而积累顺序和时窗变化。
-
-### 4. 调整脉冲结构，重搜少量精英
-
-对完整有效解尝试 primer 引导的脉冲节点插入和节点删减。对少量精英再尝试整体轨迹旋转、目标重新分配，以及包含中途脉冲的束搜索，最后都回到 J₂ 全链联合优化。中途脉冲转移通过数值搜索得到，不假设存在通用三脉冲解析最优解。
-
-### 5. 以完整物理验证决定是否接受
-
-代价是全部实际速度跳变量模长之和，单位 km/s；飞越不要求匹配目标速度。目标节点在目标位置周围约 0.995 km 球内，留出数值余量。
-
-最终候选必须覆盖全部 35 个目标，并通过独立严格 J₂ 连续传播、初始轨道、飞越距离、任务时间和全程高度检查。连续复验不在节点把航天器重置到理想坐标。只有通过检查的完整解进入有效档案。
-
-本项目实现的是可批量执行的优化方法，不内置历史 6.4 解，不承诺固定成绩或全局最优。固定随机种子便于重复实验；由于部分内核使用墙钟预算，不同机器不保证逐位相同。
-
-本次整理已用随附 venv 完成两个入口的环境检查、一轮真实束搜索、自动接入两条候选的短预算并行优化，以及完整 35 目标的严格 J₂ 验证。测试输出和编译缓存在交付前清理；没有启动默认规模的正式优化。
-
-## 运行环境
-
-随项目的 `venv` 已为当前 Windows 机器和项目路径配置。它使用本机 Python 3.12；不要把其他项目的 venv 复制来覆盖。移动到其他电脑或更改目录后，建议在新位置重建：
-
-GitHub 仓库保存源码、必要星历和共享 VS Code 配置。本机 `venv/`、`.cache/`、`results/` 和编译缓存由 `.gitignore` 排除，仍保留在本机。通过 GitHub 克隆项目后，需要先重建环境：
-
-```powershell
-py -3.12 -m venv venv
+python -m venv venv
 .\venv\Scripts\python.exe -m pip install -r requirements.txt
+.\venv\Scripts\python.exe search.py
+.\venv\Scripts\python.exe optimize.py
 ```
 
-此时仍然只使用 `search.py`、`optimize.py` 两个入口，不需要安装 ATK 才能进行数值搜索与优化。
+Linux 对应解释器路径为 `venv/bin/python`。在 VS Code 选择安装了上述依赖的解释器，打开入口直接运行也可以。虚拟环境在本机建立，不上传 Git。
 
-## 在 VS Code 中提交与推送
+| 输入文件 | 内容 |
+|---|---|
+| `data/states.npy` | 35个目标的 ICRF 位置、速度；形状 `(35,14401,6)`，间隔60 s |
+| `data/calibration.json` | 固定极轴 J₂ 代理模型的标定矩阵及原标定记录 |
+| `data/example_route.json` | 一条未深度优化的完整二体初解，供单条试跑 |
 
-用 VS Code 打开项目根目录，左侧“源代码管理”会自动识别本仓库。修改文件后，点击文件旁的 `+` 暂存，输入提交说明并点击“提交”，随后点击“同步更改”或“推送”。本地 `main` 分支跟踪 GitHub 的 `origin/main`。
+纪元为 **2035-01-01 12:00:00 UTC**，任务长864000 s；计算使用 km、s、km/s。目标内部编号0–34。
 
-GitHub 仓库：<https://github.com/lihaichuan6686/CTOC14B_final_search_optimizer_20261011>，初始为私有仓库。当前电脑通过已登录的 GitHub CLI 提供 Git 凭据；在其他电脑上需要先登录自己的 GitHub 账户。
+## 在哪里改参数、优化哪份结果
 
-当前电脑的 GitHub 连接使用已有本机代理 `127.0.0.1:7897`，推送时请保持代理运行。该设置只保存在本仓库的 `.git/config`，不随源码上传，也不要求其他电脑使用相同代理。
+`search.py` 开头：
+
+```python
+OUTPUT_DIRECTORY = PROJECT / "results/search"
+PLANE_COUNT = 128
+THREAD_COUNT = 8
+BEAM_WIDTHS = (96, 192, 192, 288)
+```
+
+平面容差、首访相位数、时窗取点、局部细化也在该文件的 `PARAMETERS` 中列出。默认逐轮换平面，保存每轮全部完整链到 `results/search/run_000001.jsonl.gz` 等。
+
+`optimize.py` 开头：
+
+```python
+SEARCH_DIRECTORY = PROJECT / "results/search"
+TRAJECTORY_FILES = []
+OUTPUT_DIRECTORY = PROJECT / "results/optimization"
+WORKERS = 4
+BEAM_THREADS = 8
+INITIAL_COUNT = 8
+```
+
+- `TRAJECTORY_FILES` 为空：只读 `SEARCH_DIRECTORY` 直接包含的 `run_*.jsonl.gz`，不递归查子目录。
+- `TRAJECTORY_FILES` 非空：只读其中明确列出的完整轨迹 JSON，忽略搜索目录。
+- 各阶段秒数、迭代上限、换位轮数和精英数量都在同一入口顶部。
+
+先试一条示例的基本联调，可改为：
+
+```python
+TRAJECTORY_FILES = [PROJECT / "data/example_route.json"]
+RELOCATION_ROUNDS = 0
+ROTATION_PARENTS = 0
+DEEP_BEAM_PARENTS = 0
+```
+
+这会运行二体三阶段联调与 J₂ SCP，跳过换位、脉冲增删、旋转重分配和末级重搜；完整流程需恢复原默认值。时间预算是迭代间检查的软上限，首次编译及单次求解可能超出设置。
+
+| 优化输出 | 含义 |
+|---|---|
+| `candidate_0001.json` 等 | 通过完整35目标连续传播复验的候选，包括非当前最优的多样性候选 |
+| `BEST_J2.json` | 本次运行截至当前最低实际 Δv 轨迹 |
+| `BEST_J2_validation.json` | 对应连续传播、飞越距离、初轨、高度及脉冲明细 |
+
+**不同实验请分别改 `OUTPUT_DIRECTORY`。** 重跑同目录会覆盖同名文件，但不清除上次多出来的文件；程序也不会自动读回该目录接续。
+
+## 并行设置
+
+- 初搜：单进程，Numba 默认8线程，平面依次运行、束内候选并行；BLAS 限1线程。逐轮输出不代表只用一核。
+- 优化：默认4个工作进程，每进程 Numba/BLAS 均为1线程。
+- 末级重搜：进程池结束后用8条 Numba 线程，BLAS 为1线程。
+
+这些是手动设置的本地默认值，不会自动变成96核，也不按剩余内存自动降档。修改并发需要考虑求解器内存和星历传递开销。
+
+## 阅读顺序
+
+| 研究步骤 | 文件与主要函数 |
+|---|---|
+| 整体搜索 | [search.py](search.py)：`main` |
+| 首访、束扩展、前瞻、多样性 | [beam_search.py](beam_search.py)：`continuous_beam_run`、`seed_routes`、`expand`、`select_records` |
+| 平面带时窗与二体转移 | [plane_windows.py](plane_windows.py)、[lambert.py](lambert.py) |
+| 整体优化 | [optimize.py](optimize.py)：`main`、`initial_refinement` |
+| 候选池及家族选择 | [candidate_selection.py](candidate_selection.py) |
+| 二体全链 SLSQP、分支动态规划 | [two_body_optimization.py](two_body_optimization.py) |
+| J₂、STM与端点打靶 | [orbit_dynamics.py](orbit_dynamics.py) |
+| 脉冲导数、SCP与弹性修复 | [j2_optimization.py](j2_optimization.py)：`pulse_model`、`refine`、`repair` |
+| 目标释放、换位、整体重分配 | [target_relocation.py](target_relocation.py) |
+| 长弧细分、自由节点增删 | [impulse_nodes.py](impulse_nodes.py)、[primer_insertion.py](primer_insertion.py) |
+| 带中途脉冲的精英重搜 | [midcourse_search.py](midcourse_search.py)、[midcourse_transfers.py](midcourse_transfers.py) |
+| 独立连续传播复验 | [trajectory_evaluation.py](trajectory_evaluation.py)：`evaluate` |
+
+共两个入口、13个计算文件。旧版运行框架不保留在当前目录，旧代码仍可从 Git 历史查看。
+
+## 结果应如何理解
+
+这是一套可批量执行的多起点搜索与连续/结构优化方法。首轮二体费用只是候选指标，低二体费用、低松弛费用与低 J₂有效费用并不等价。固定平面和有限束宽会剪掉可能性；默认预算不保证复现历史约6.4 km/s，也不能保证算力增加就找到全局最优。
+
+最终复验是**标定固定极轴 J₂ 模型下的独立 DOP853 连续传播**，不等同于官方 ATK 判分。此前讨论的“初筛前给全部候选做三脉冲潜力估计”尚未加入；中途脉冲搜索位于优化末级。
+
+当前版改变了候选池随机抽样和部分计时边界，不保证与旧版整批随机实验路径一致。详细边界、2026-10-13的重构核对记录，以及2026-10-20的发布验算结果见 [METHOD.md](METHOD.md)。
